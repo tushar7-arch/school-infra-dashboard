@@ -38,66 +38,74 @@ def load_data(path="sample_school_data.csv"):
 
 df = load_data()
 
-# ─── Sidebar Filters ──────────────────────────────────────────────────────────
+# ─── Sidebar Filters & Applying Them ────────────────────────────────────────
 st.sidebar.header("🔍 Filters")
-
-# Geography
-states = st.sidebar.multiselect("State", df["state"].unique(), default=df["state"].unique())
-districts = st.sidebar.multiselect(
-    "District",
-    df.query("state in @states")["district"].unique(),
-    default=df["district"].unique()
-)
-blocks = st.sidebar.multiselect(
-    "Block",
-    df.query("district in @districts")["block"].unique(),
-    default=df["block"].unique()
-)
-rural_urban = st.sidebar.selectbox("Location Type", ["All", "Rural (1)", "Urban (2)"])
-
-# School attributes
-school_cat = st.sidebar.multiselect("School Category", df["school_category"].unique(),
-                                    default=df["school_category"].unique())
-school_type = st.sidebar.multiselect("School Type", df["school_type"].unique(),
-                                     default=df["school_type"].unique())
-management = st.sidebar.multiselect("Management", df["managment"].unique(),
-                                    default=df["managment"].unique())
-resi = st.sidebar.selectbox("Residential School?", ["All", "Yes (1)", "Partial (2)", "No (3)"])
-minority = st.sidebar.selectbox("Minority-managed?", ["All", "Yes (1)", "No (2)"])
-
-# Grade range
-low, high = int(df["lowclass"].min()), int(df["highclass"].max())
-grade_range = st.sidebar.slider("Grades Offered (min→max)", low, high, (low, high))
-
-# Infrastructure toggles
-elec = st.sidebar.selectbox("Electricity", ["All", "Yes (1)", "No/Not functional (2/3)"])
-internet = st.sidebar.selectbox("Internet", ["All", "Yes (1)", "No (2)"])
-library = st.sidebar.selectbox("Library", ["All", "Yes (1)", "No (2)"])
-playground = st.sidebar.selectbox("Playground", ["All", "Yes (1)", "No (2)"])
-rainwater = st.sidebar.selectbox("Rainwater Harvesting", ["All", "Yes (1)", "No (2)"])
-boundary = st.sidebar.multiselect("Boundary Wall (types)", df["boundary_wall"].unique(),
-                                  default=df["boundary_wall"].unique())
-ramps = st.sidebar.selectbox("Ramps Available", ["All", "Yes (1)", "No (2)"])
-handrails = st.sidebar.selectbox("Handrails", ["All", "Yes (1)", "No (2)"])
-spl_edu = st.sidebar.selectbox("Special Educator", ["All", "Dedicated (1)", "Cluster (2)", "None (3)"])
-
-# Apply filters
 f = df.copy()
-f = f[f["state"].isin(states)]
-f = f[f["district"].isin(districts)]
-f = f[f["block"].isin(blocks)]
-if rural_urban != "All":
-    code = int(rural_urban.split("(")[1].strip(")"))
-    f = f[f["rural_urban"] == code]
-f = f[f["school_category"].isin(school_cat)]
-f = f[f["school_type"].isin(school_type)]
-f = f[f["managment"].isin(management)]
-if resi != "All":
-    f = f[f["resi_school"] == int(resi.split("(")[1].strip(")"))]
-if minority != "All":
-    f = f[f["minority_school"] == int(minority.split("(")[1].strip(")"))]
-f = f[(f["lowclass"] >= grade_range[0]) & (f["highclass"] <= grade_range[1])]
-for name, choice in [
+
+def apply_multiselect(col, label=None, default_all=True):
+    """Helper: show a multiselect only if col exists; returns selected values or None."""
+    if col not in df.columns:
+        return None
+    opts = df[col].dropna().unique()
+    default = list(opts) if default_all else []
+    sel = st.sidebar.multiselect(label or col, opts, default=default)
+    return sel
+
+def apply_selectbox(col, mapping, label=None):
+    """Helper: show a selectbox only if col exists; returns the mapped code or None."""
+    if col not in df.columns:
+        return None
+    choice = st.sidebar.selectbox(label or col, ["All"] + list(mapping.keys()))
+    return mapping.get(choice, None)
+
+# 1) Geography
+states   = apply_multiselect("state",    "State")
+districts= apply_multiselect("district","District")
+blocks   = apply_multiselect("block",    "Block")
+ru_map   = {"Rural":1, "Urban":2}
+rural_urban = apply_selectbox("rural_urban", ru_map, "Location Type")
+
+# 2) School attributes
+school_cat = apply_multiselect("school_category","School Category")
+school_type= apply_multiselect("school_type",    "School Type")
+management = apply_multiselect("managment",      "Management")
+resi_map   = {"Yes":1, "Partial":2, "No":3}
+resi       = apply_selectbox("resi_school", resi_map, "Residential School?")
+minority   = apply_selectbox("minority_school", {"Yes":1,"No":2}, "Minority-managed?")
+
+# 3) Grade range
+if "lowclass" in df.columns and "highclass" in df.columns:
+    low, high = int(df["lowclass"].min()), int(df["highclass"].max())
+    grade_range = st.sidebar.slider("Grades Offered", low, high, (low, high))
+else:
+    grade_range = None
+
+# 4) Infrastructure toggles
+elec_map      = {"Yes":1, "No/Not functional":2}
+elec          = apply_selectbox("electricity_availability", elec_map, "Electricity")
+internet      = apply_selectbox("internet", {"Yes":1,"No":2})
+library       = apply_selectbox("library_availability", {"Yes":1,"No":2})
+playground    = apply_selectbox("playground_available", {"Yes":1,"No":2})
+rainwater     = apply_selectbox("rain_water_harvesting", {"Yes":1,"No":2})
+boundary_sel  = apply_multiselect("boundary_wall","Boundary Wall")
+ramps         = apply_selectbox("availability_ramps", {"Yes":1,"No":2}, "Ramps")
+handrails     = apply_selectbox("availability_of_handrails", {"Yes":1,"No":2}, "Handrails")
+spl_edu       = apply_selectbox("spl_educator_yn", {"Dedicated":1,"Cluster":2,"None":3}, "Special Educator")
+
+# Apply each filter only if its widget returned something
+if states:    f = f[f["state"].isin(states)]
+if districts: f = f[f["district"].isin(districts)]
+if blocks:    f = f[f["block"].isin(blocks)]
+if rural_urban: f = f[f["rural_urban"] == rural_urban]
+if school_cat: f = f[f["school_category"].isin(school_cat)]
+if school_type: f = f[f["school_type"].isin(school_type)]
+if management: f = f[f["managment"].isin(management)]
+if resi:        f = f[f["resi_school"] == resi]
+if minority:    f = f[f["minority_school"] == minority]
+if grade_range:
+    f = f[(f["lowclass"] >= grade_range[0]) & (f["highclass"] <= grade_range[1])]
+
+for col, val in [
     ("electricity_availability", elec),
     ("internet", internet),
     ("library_availability", library),
@@ -107,10 +115,11 @@ for name, choice in [
     ("availability_of_handrails", handrails),
     ("spl_educator_yn", spl_edu),
 ]:
-    if choice != "All":
-        code = int(choice.split("(")[1].strip(")"))
-        f = f[f[name] == code]
-f = f[f["boundary_wall"].isin(boundary)]
+    if val is not None:
+        f = f[f[col] == val]
+
+if boundary_sel:
+    f = f[f["boundary_wall"].isin(boundary_sel)]
 
 # ─── KPI CARDS ────────────────────────────────────────────────────────────────
 st.title("📊 School Infrastructure Dashboard")
